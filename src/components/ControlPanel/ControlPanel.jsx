@@ -11,6 +11,9 @@ function ControlPanel() {
     { key: "low visibility", value: 3 },
   ];
 
+  // Define icons here, where google is available
+
+
   const [selectedPosition, setSelectedPosition] = useState(positionOptions[0].value);
   const [drawingManager, setDrawingManager] = useState(null);
   const [drawnShapes, setDrawnShapes] = useState([]); // Store drawn objects
@@ -18,11 +21,24 @@ function ControlPanel() {
   const map = useMap();
   const drawing = useMapsLibrary("drawing");
 
+
   const iconMapping = {
-    0: curves,
-    1: blocked,
-    2: potholes,
-    3: redTriangle,
+    0: {
+      url: "src/assets/carslip.png",
+      scaledSize: new google.maps.Size(32, 32)
+    },
+    1: {
+      url: "src/assets/blocked.png",
+      scaledSize: new google.maps.Size(20, 32),
+    },
+    2: {
+      url: "src/assets/pothole.png",
+      scaledSize: new google.maps.Size(32, 32),
+    },
+    3: {
+      url: "src/assets/low_visibility.png",
+      scaledSize: new google.maps.Size(32, 32),
+    },
   };
 
   useEffect(() => {
