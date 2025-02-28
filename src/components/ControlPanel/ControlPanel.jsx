@@ -1,7 +1,7 @@
 import { useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
 import { useState, useEffect } from "react";
 import "./ControlPanel.scss";
-import { db } from "../Firebase/Firebase"; // Import Firestore
+import { db } from "../Firebase/Firebase";
 import { collection, addDoc, onSnapshot, deleteDoc, doc } from "firebase/firestore";
 
 function ControlPanel() {
@@ -12,55 +12,39 @@ function ControlPanel() {
     { key: "low visibility", value: 3 },
   ];
 
-  // Define icons here, where google is available
-
-
   const [selectedPosition, setSelectedPosition] = useState(positionOptions[0].value);
   const [drawingManager, setDrawingManager] = useState(null);
-  const [drawnShapes, setDrawnShapes] = useState([]); // Store drawn objects
+  const [drawnShapes, setDrawnShapes] = useState([]);
 
   const map = useMap();
   const drawing = useMapsLibrary("drawing");
 
-
-  const iconMapping = {
-    0: {
-      url: "src/assets/carslip.png",
-      scaledSize: new google.maps.Size(32, 32)
-    },
-    1: {
-      url: "src/assets/blocked.png",
-      scaledSize: new google.maps.Size(20, 32),
-    },
-    2: {
-      url: "src/assets/pothole.png",
-      scaledSize: new google.maps.Size(32, 32),
-    },
-    3: {
-      url: "src/assets/low_visibility.png",
-      scaledSize: new google.maps.Size(32, 32),
-    },
-  };
+  const iconMapping = drawing
+    ? {
+      0: { url: "/assets/carslip.png", scaledSize: new google.maps.Size(32, 32) },
+      1: { url: "/assets/blocked.png", scaledSize: new google.maps.Size(20, 32) },
+      2: { url: "/assets/pothole.png", scaledSize: new google.maps.Size(32, 32) },
+      3: { url: "/assets/low_visibility.png", scaledSize: new google.maps.Size(32, 32) },
+    }
+    : {};
 
   useEffect(() => {
     if (!map || !drawing) return;
 
-    // Load markers from Firestore
     const unsubscribe = onSnapshot(collection(db, "markers"), (snapshot) => {
       const shapes = snapshot.docs.map((doc) => {
         const data = doc.data();
         return {
-          id: doc.id, // Store Firestore doc ID
+          id: doc.id,
           type: data.type,
           position: data.position ? new google.maps.LatLng(data.position.lat, data.position.lng) : null,
           path: data.path ? data.path.map((p) => new google.maps.LatLng(p.lat, p.lng)) : null,
           icon: iconMapping[data.icon],
-          overlay: null, // We’ll recreate overlays below if needed
+          overlay: null,
         };
       });
       setDrawnShapes(shapes);
 
-      // Optionally recreate overlays on the map
       shapes.forEach((shape) => {
         if (shape.type === "marker" && shape.position) {
           shape.overlay = new google.maps.Marker({
@@ -101,17 +85,21 @@ function ControlPanel() {
       const overlay = event.overlay;
       const newShape = {
         type: event.type,
-        overlay: null,
         position: overlay.getPosition ? overlay.getPosition().toJSON() : null,
         path: overlay.getPath ? overlay.getPath().getArray().map((p) => p.toJSON()) : null,
         icon: selectedPosition,
         timestamp: new Date().toISOString(),
       };
-      setDrawnShapes((prev) => [...prev, newShape]);
 
-      // Save to Firestore
-      const docRef = await addDoc(collection(db, "markers"), newShape);
-      setDrawnShapes((prev) => [...prev, { ...newShape, id: docRef.id, overlay }]);
+      try {
+        const docRef = await addDoc(collection(db, "markers"), newShape);
+        setDrawnShapes((prev) => [
+          ...prev,
+          { ...newShape, id: docRef.id, overlay, icon: iconMapping[selectedPosition] },
+        ]);
+      } catch (error) {
+        console.error("Failed to add marker to Firestore:", error);
+      }
     };
 
     google.maps.event.addListener(newDrawingManager, "overlaycomplete", handleOverlayComplete);
@@ -119,20 +107,28 @@ function ControlPanel() {
     return () => {
       google.maps.event.clearInstanceListeners(newDrawingManager);
       newDrawingManager.setMap(null);
+      unsubscribe(); // Clean up Firestore listener
     };
   }, [drawing, map, selectedPosition]);
 
-  const handleUndoLast = () => {
+  const handleUndoLast = async () => {
     if (drawnShapes.length === 0) return;
-    const lastShape = drawnShapes.pop();
+
+    const lastShape = drawnShapes[drawnShapes.length - 1];
     if (lastShape.overlay) {
-      lastShape.overlay.setMap(null); // Remove from map
+      lastShape.overlay.setMap(null);
     }
     if (lastShape.id) {
-      deleteDoc(doc(db, "markers", lastShape.id)); // Delete from Firestore
+      try {
+        await deleteDoc(doc(db, "markers", lastShape.id));
+      } catch (error) {
+        console.error("Failed to delete marker from Firestore:", error);
+        return;
+      }
     }
-    setDrawnShapes([...drawnShapes]);
+    setDrawnShapes((prev) => prev.slice(0, -1));
   };
+
   return (
     <div className="control-panel">
       <h3>Map Control Panel</h3>
